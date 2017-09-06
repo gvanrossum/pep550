@@ -1,14 +1,48 @@
 # Stub for PEP 550.  Names subject to bikeshedding.
 
+import threading
 from typing import *
 
-T = TypeVar('T')
-S = TypeVar('S')
+# Type variables.
+
+T = TypeVar('T')  # A type
+S = TypeVar('S')  # Another type
+KT = TypeVar('KT')  # A key type
+VT = TypeVar('VT')  # A value type
+
+# Fake thread state so the code works.
+
+class ThreadState(threading.local):
+    """Dummy corresponding to PyThreadState.
+
+    This implementation is actually thread-local!
+    """
+    ec: Optional[ExecutionContext] = None
+
+_ts = ThreadState()
+
+def get_TS() -> ThreadState:
+    """Return current ThreadState"""
+    return _ts
+
+# Get and set current thread's ExecutionContext.
+
+def get_EC() -> ExecutionContext:
+    """Return current thread's EC (creating it if necessary)"""
+    ts = get_TS()
+    if ts.ec is None:
+        ts.ec = ExecutionContext(FrozenDict(), None)
+    return ts.ec
+
+def set_EC(ec: ExecutionContext) -> None:
+    """Set current thread's EC"""
+    ts = get_TS()
+    ts.ec = ec
 
 class ContextVar(Generic[T, S]):
     """Context variable."""
 
-    def __init__(self, *, name: str, default: S) -> None:
+    def __init__(self, name: str, *, default: S) -> None:
         self._name = name
         self._default = default
 
@@ -55,13 +89,14 @@ class ContextVar(Generic[T, S]):
 class CM:
     """Context manager for restoring a ContextVar's previous state.
 
-    var = ContextVar(...)
+    var = ContextVar('var')
 
     def fun():
         old_value = var.get()
         with var.setx(<value>):
+            # Here var.get() is <value>
             <stuff>
-        assert var.get() is old_value
+        # Here var.get() is old_value
 
     Note that the side effect of setx() happens immediately;
     __enter__() is a dummy returning self, __exit__() calls restore(),
@@ -93,9 +128,6 @@ class CM:
 
     def __exit__(self, *args: Any) -> None:
         self.restore()
-
-KT = TypeVar('KT')
-VT = TypeVar('VT')
 
 class FrozenDict(Mapping[KT, VT]):
 
@@ -199,23 +231,6 @@ class ExecutionContext:
             lc = lc.merge(back.lc)
             back = back._back
         return ExecutionContext(FrozenDict(lc), None)
-
-class ThreadState:
-    ec: Optional[ExecutionContext] = None
-
-def get_TS() -> ThreadState: ...  # Return current ThreadState
-
-def get_EC() -> ExecutionContext:
-    """Return current thread's EC (creating it if necessary)"""
-    ts = get_TS()
-    if ts.ec is None:
-        ts.ec = ExecutionContext(FrozenDict(), None)
-    return ts.ec
-
-def set_EC(ec: ExecutionContext) -> None:
-    """Set current thread's EC"""
-    ts = get_TS()
-    ts.ec = ec
 
 def run_with_EC(ec, fn: Callable[..., T], *args, **kwds) -> T:
     """Pushes given EC, calls callable, and pops the EC again"""

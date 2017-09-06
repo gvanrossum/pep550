@@ -33,26 +33,24 @@ class ContextVar(Generic[T, S]):
 
     def set(self, value: T) -> None:
         """Overwrite topmost value"""
-        ec = get_EC()
-        lc = ec.lc
-        new_lc = lc.add(self, value)
-        new_ec = ExecutionContext(new_lc, ec.back)
+        old_ec = get_EC()
+        new_lc = old_ec.lc.add(self, value)
+        new_ec = ExecutionContext(new_lc, old_ec.back)
         set_EC(new_ec)
 
     def setx(self, value: T) -> CM:
         """Overwrite topmost value, allows restore()"""
         ec = get_EC()
         lc = ec.lc
-        try:
-            orig = lc[self]
-            found = True
-        except KeyError:
-            orig = None
-            found = False
+        found = self in lc
+        if found:
+            old_value = lc[self]
+        else:
+            old_value = None
         new_lc = lc.add(self, value)
         new_ec = ExecutionContext(new_lc, ec.back)
         set_EC(new_ec)
-        return CM(self, orig, found)
+        return CM(self, old_value, found)
 
 class CM:
     """Context manager for restoring a ContextVar's previous state.
@@ -60,10 +58,10 @@ class CM:
     var = ContextVar(...)
 
     def fun():
-        orig = var.get()
+        old_value = var.get()
         with var.setx(<value>):
             <stuff>
-        assert var.get() is orig
+        assert var.get() is old_value
 
     Note that the side effect of setx() happens immediately;
     __enter__() is a dummy returning self, __exit__() calls restore(),
@@ -71,9 +69,9 @@ class CM:
     happens.  Calling restore() a second time is a no-op.
     """
 
-    def __init__(self, var: ContextVar, orig: object, found: bool) -> None:
+    def __init__(self, var: ContextVar, old_value: object, found: bool) -> None:
         self._var = var
-        self._orig = orig
+        self._old_value = old_value
         self._found = found
         self._used = False
 
@@ -83,7 +81,7 @@ class CM:
         ec = get_EC()
         lc = ec.lc
         if self._found:
-            new_lc = lc.add(self._var, self._orig)
+            new_lc = lc.add(self._var, self._old_value)
         else:
             new_lc = lc.delete(self._var)
         new_ec = ExecutionContext(new_lc, ec.back)
@@ -152,7 +150,7 @@ class LocalContext:
             set_EC(new_ec)
             return fn(*args, **kwds)
         finally:
-            self._bare = ec.lc
+            self._bare = old_ec.lc
             set_EC(old_ec)
 
 class ExecutionContext:
@@ -190,15 +188,28 @@ class ExecutionContext:
             back = back._back
         return ExecutionContext(FrozenDict(lc), None)
 
-def get_EC() -> ExecutionContext: ...  # Return current thread's EC
+class ThreadState:
+    ec: Optional[ExecutionContext] = None
 
-def set_EC(ec: ExecutionContext) -> None: ...  # Set current thread's EC
+def get_TS() -> ThreadState: ...  # Return current ThreadState
+
+def get_EC() -> ExecutionContext:
+    """Return current thread's EC (creating it if necessary)"""
+    ts = get_TS()
+    if ts.ec is None:
+        ts.ec = ExecutionContext(FrozenDict(), None)
+    return ts.ec
+
+def set_EC(ec: ExecutionContext) -> None:
+    """Set current thread's EC"""
+    ts = get_TS()
+    ts.ec = ec
 
 def run_with_EC(ec, fn: Callable[..., T], *args, **kwds) -> T:
-    """Pushes empty LC and calls callable"""
+    """Pushes given EC, calls callable, and pops the EC again"""
     old_ec = get_EC()
     try:
-        set_EC(ec)
+        set_EC(old_ec)
         return fn(*args, **kwds)
     finally:
         set_EC(old_ec)

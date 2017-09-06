@@ -7,15 +7,55 @@ S = TypeVar('S')
 
 class ContextVar(Generic[T, S]):
     """Context variable."""
-    def __init__(self, *, description: str, default: S) -> None: ...
+
+    def __init__(self, *, name: str, default: S) -> None:
+        self._name = name
+        self._default = default
+
     @property
-    def description(self) -> str: ...
+    def name(self) -> str:
+        return self._name
+
     @property
-    def default(self) -> S: ...
+    def default(self) -> S:
+        return self._default
+
     # Methods that take the current context into account
-    def get(self) -> Union[T, S]: ...  # Return topmost value or default
-    def set(self, value: T) -> None: ...  # Overwrite topmost value
-    def setx(self, value: T) -> CM: ...  # Overwrite topmost value, allows restore()
+
+    def get(self) -> Union[T, S]:
+        """Return topmost value or default"""
+        ec = get_EC()
+        while ec is not None:
+            try:
+                # NOTE: Split in two halves to work around mypy issue
+                v = ec.lc[self]
+                return v
+            except KeyError:
+                ec = ec.back
+        return self._default
+
+    def set(self, value: T) -> None:
+        """Overwrite topmost value"""
+        ec = get_EC()
+        lc = ec.lc
+        new_lc = lc.assign(self, value)
+        new_ec = ExecutionContext(new_lc, ec.back)
+        set_EC(new_ec)
+
+    def setx(self, value: T) -> CM:
+        """Overwrite topmost value, allows restore()"""
+        ec = get_EC()
+        lc = ec.lc
+        try:
+            orig = lc[self]
+            found = True
+        except KeyError:
+            orig = None
+            found = False
+        new_lc = lc.assign(self, value)
+        new_ec = ExecutionContext(new_lc, ec.back)
+        set_EC(new_ec)
+        return CM(self, orig, found)
 
 class CM:
     """Context manager for restoring a ContextVar's previous state.
@@ -33,9 +73,31 @@ class CM:
     and if the object is GC'ed before restore() is called nothing
     happens.  Calling restore() a second time is a no-op.
     """
-    def restore(self) -> None: ...
-    def __enter__(self) -> CM: ...
-    def __exit__(self, *args: Any) -> None: ...
+
+    def __init__(self, var: ContextVar, orig: object, found: bool) -> None:
+        self._var = var
+        self._orig = orig
+        self._found = found
+        self._used = False
+
+    def restore(self) -> None:
+        if self._used:
+            return
+        ec = get_EC()
+        lc = ec.lc
+        if self._found:
+            new_lc = lc.assign(self._var, self._orig)
+        else:
+            new_lc = lc.unassign(self._var)
+        new_ec = ExecutionContext(new_lc, ec.back)
+        set_EC(new_ec)
+        self._used = True
+
+    def __enter__(self) -> CM:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.restore()
 
 class BareLocalContext:
     # Do we want to implement Mapping?

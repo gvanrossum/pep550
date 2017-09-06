@@ -220,8 +220,9 @@ def set_EC(ec: ExecutionContext) -> None:
 def run_with_EC(ec, fn: Callable[..., T], *args, **kwds) -> T:
     """Pushes given EC, calls callable, and pops the EC again"""
     old_ec = get_EC()
+    new_ec = ExecutionContext(FrozenDict(), ec)  # Push an empty EC
     try:
-        set_EC(ec)
+        set_EC(new_ec)
         return fn(*args, **kwds)
     finally:
         set_EC(old_ec)

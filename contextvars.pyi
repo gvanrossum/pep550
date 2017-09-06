@@ -26,10 +26,9 @@ class ContextVar(Generic[T, S]):
         """Return topmost value or default"""
         ec = get_EC()
         while ec is not None:
-            try:
+            if self in ec.lc:
                 return ec.lc[self]
-            except KeyError:
-                ec = ec.back
+            ec = ec.back
         return self._default
 
     def set(self, value: T) -> None:
@@ -140,16 +139,21 @@ class LocalContext:
 
     This wraps a FrozenDict.
     """
-    @property
-    def lc(self) -> FrozenDict: ...  # return self._lc
+
+    _bare: FrozenDict[ContextVar, object]
+
+    def __init__(self) -> None:
+        self._bare = FrozenDict()
+
     def run(self, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
-        orig_ec = get_EC()
-        ec = ExecutionContext(self.lc, orig_ec)
+        old_ec = get_EC()
+        new_ec = ExecutionContext(self._bare, old_ec)
         try:
+            set_EC(new_ec)
             return fn(*args, **kwds)
         finally:
-            self._lc = ec.lc
-            set_EC(orig_ec)
+            self._bare = ec.lc
+            set_EC(old_ec)
 
 class ExecutionContext:
     """Execution context -- a linked list of FrozenDicts.
@@ -177,17 +181,24 @@ class ExecutionContext:
     def back(self) -> ExecutionContext:
         return self._back
 
-    def squash(self) -> ExecutionContext: ...  # Return an equivalent EC with depth 1
+    def squash(self) -> ExecutionContext:
+        """Return an equivalent EC with depth 1"""
+        lc = self._lc
+        back = self._back
+        while back is not None:
+            lc = lc.merge(back.lc)
+            back = back._back
+        return ExecutionContext(FrozenDict(lc), None)
 
 def get_EC() -> ExecutionContext: ...  # Return current thread's EC
 
 def set_EC(ec: ExecutionContext) -> None: ...  # Set current thread's EC
 
-def run_with_EC(fn: Callable[..., T], *args, **kwds) -> T:
+def run_with_EC(ec, fn: Callable[..., T], *args, **kwds) -> T:
     """Pushes empty LC and calls callable"""
-    ec = get_EC()
+    old_ec = get_EC()
     try:
-        set_EC(ExecutionContext(FrozenDict(), ec))
+        set_EC(ec)
         return fn(*args, **kwds)
     finally:
-        set_EC(ec)
+        set_EC(old_ec)

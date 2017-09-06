@@ -27,9 +27,7 @@ class ContextVar(Generic[T, S]):
         ec = get_EC()
         while ec is not None:
             try:
-                # NOTE: Split in two halves to work around mypy issue
-                v = ec.lc[self]
-                return v
+                return ec.lc[self]
             except KeyError:
                 ec = ec.back
         return self._default
@@ -38,7 +36,7 @@ class ContextVar(Generic[T, S]):
         """Overwrite topmost value"""
         ec = get_EC()
         lc = ec.lc
-        new_lc = lc.assign(self, value)
+        new_lc = lc.add(self, value)
         new_ec = ExecutionContext(new_lc, ec.back)
         set_EC(new_ec)
 
@@ -52,7 +50,7 @@ class ContextVar(Generic[T, S]):
         except KeyError:
             orig = None
             found = False
-        new_lc = lc.assign(self, value)
+        new_lc = lc.add(self, value)
         new_ec = ExecutionContext(new_lc, ec.back)
         set_EC(new_ec)
         return CM(self, orig, found)
@@ -86,9 +84,9 @@ class CM:
         ec = get_EC()
         lc = ec.lc
         if self._found:
-            new_lc = lc.assign(self._var, self._orig)
+            new_lc = lc.add(self._var, self._orig)
         else:
-            new_lc = lc.unassign(self._var)
+            new_lc = lc.delete(self._var)
         new_ec = ExecutionContext(new_lc, ec.back)
         set_EC(new_ec)
         self._used = True
@@ -99,26 +97,51 @@ class CM:
     def __exit__(self, *args: Any) -> None:
         self.restore()
 
-class BareLocalContext:
-    # Do we want to implement Mapping?
-    """Immutable local context object.
+KT = TypeVar('KT')
+VT = TypeVar('VT')
 
-    This is implemented as a HAMT (hash tree).
-    """
-    def __getitem__(self, var: ContextVar[T, S]) -> Union[T, S]: ...
-    def assign(self, var: ContextVar[T, S], value: T) -> BareLocalContext: ...
-    def unassign(self, var: ContextVar[T, S]) -> BareLocalContext: ...
-    def merge(self, other: BareLocalContext) -> BareLocalContext: ...
-    # Do we want keys(), __len__()?
-    def run(self, fn: Callable[..., T], *args: Any, **kwds: Any) -> T: ...
+class FrozenDict(Mapping[KT, VT]):
 
-class WrappedLocalContext:
+    def __init__(self, d: Mapping[KT, VT] = {}) -> None:
+        self.__d = dict(d)
+
+    def __getitem__(self, key: KT) -> VT:
+        return self.__d[key]
+
+    def __len__(self) -> int:
+        return len(self.__d)
+
+    def __iter__(self) -> Iterator[KT]:
+        return iter(self.__d)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self.__d
+
+    # API to create new FrozenDict instances.
+
+    def add(self, key: KT, value: VT) -> FrozenDict[KT, VT]:
+        d = dict(self.__d)
+        d[key] = value
+        return FrozenDict(d)
+
+    def delete(self, key: KT) -> FrozenDict[KT, VT]:
+        d = dict(self.__d)
+        del d[key]
+        return FrozenDict(d)
+
+    def merge(self, other: FrozenDict[KT, VT]) -> FrozenDict[KT, VT]:
+        # Note that for keys in both, self[key] prevails.
+        d = dict(other.__d)
+        d.update(self)
+        return FrozenDict(d)
+
+class LocalContext:
     """Mutable local context object.
 
-    This wraps a BareLocalContext.
+    This wraps a FrozenDict.
     """
     @property
-    def lc(self) -> BareLocalContext: ...  # return self._lc
+    def lc(self) -> FrozenDict: ...  # return self._lc
     def run(self, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
         orig_ec = get_EC()
         ec = ExecutionContext(self.lc, orig_ec)
@@ -129,13 +152,13 @@ class WrappedLocalContext:
             set_EC(orig_ec)
 
 class ExecutionContext:
-    """Execution context -- a linked list of BareLocalContexts.
+    """Execution context -- a linked list of FrozenDicts.
 
     To push a local context, use ExecutionContext(lc, ec).
     To pop a local context, use ec.back.
     """
 
-    def __init__(self, lc: BareLocalContext, back: Optional[ExecutionContext]) -> None:
+    def __init__(self, lc: FrozenDict, back: Optional[ExecutionContext]) -> None:
         self._lc = lc
         self._back = back
 
@@ -147,7 +170,7 @@ class ExecutionContext:
         return self.back.depth + 1
 
     @property
-    def lc(self) -> BareLocalContext:
+    def lc(self) -> FrozenDict:
         return self._lc
 
     @property
@@ -164,7 +187,7 @@ def run_with_EC(fn: Callable[..., T], *args, **kwds) -> T:
     """Pushes empty LC and calls callable"""
     ec = get_EC()
     try:
-        set_EC(ExecutionContext(BareLocalContext(), ec))
+        set_EC(ExecutionContext(FrozenDict(), ec))
         return fn(*args, **kwds)
     finally:
         set_EC(ec)

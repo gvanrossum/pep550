@@ -17,7 +17,7 @@ class ThreadState(threading.local):
 
     This implementation is actually thread-local!
     """
-    ec: Optional[ExecutionContext] = None
+    ec: Optional['ExecutionContext'] = None
 
 _ts = ThreadState()
 
@@ -27,14 +27,14 @@ def get_TS() -> ThreadState:
 
 # Get and set current thread's ExecutionContext.
 
-def get_EC() -> ExecutionContext:
+def get_EC() -> 'ExecutionContext':
     """Return current thread's EC (creating it if necessary)"""
     ts = get_TS()
     if ts.ec is None:
         ts.ec = ExecutionContext(FrozenDict(), None)
     return ts.ec
 
-def set_EC(ec: ExecutionContext) -> None:
+def set_EC(ec: 'ExecutionContext') -> None:
     """Set current thread's EC"""
     ts = get_TS()
     ts.ec = ec
@@ -72,7 +72,7 @@ class ContextVar(Generic[T, S]):
         new_ec = ExecutionContext(new_lc, old_ec.back)
         set_EC(new_ec)
 
-    def setx(self, value: T) -> CM:
+    def setx(self, value: T) -> 'CM':
         """Overwrite topmost value, allows restore()"""
         ec = get_EC()
         lc = ec.lc
@@ -123,7 +123,7 @@ class CM:
         set_EC(new_ec)
         self._used = True
 
-    def __enter__(self) -> CM:
+    def __enter__(self) -> 'CM':
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -148,17 +148,17 @@ class FrozenDict(Mapping[KT, VT]):
 
     # API to create new FrozenDict instances.
 
-    def add(self, key: KT, value: VT) -> FrozenDict[KT, VT]:
+    def add(self, key: KT, value: VT) -> 'FrozenDict[KT, VT]':
         d = dict(self.__d)
         d[key] = value
         return FrozenDict(d)
 
-    def delete(self, key: KT) -> FrozenDict[KT, VT]:
+    def delete(self, key: KT) -> 'FrozenDict[KT, VT]':
         d = dict(self.__d)
         del d[key]
         return FrozenDict(d)
 
-    def merge(self, other: FrozenDict[KT, VT]) -> FrozenDict[KT, VT]:
+    def merge(self, other: 'FrozenDict[KT, VT]') -> 'FrozenDict[KT, VT]':
         # Note that for keys in both, self[key] prevails.
         d = dict(other.__d)
         d.update(self)
@@ -192,7 +192,7 @@ class ExecutionContext:
     To pop a local context, use ec.back.
     """
 
-    def __init__(self, lc: FrozenDict, back: Optional[ExecutionContext]) -> None:
+    def __init__(self, lc: FrozenDict, back: Optional['ExecutionContext']) -> None:
         self._lc = lc
         self._back = back
 
@@ -208,7 +208,7 @@ class ExecutionContext:
         return self._lc
 
     @property
-    def back(self) -> ExecutionContext:
+    def back(self) -> 'ExecutionContext':
         return self._back
 
     def vars(self) -> List[ContextVar]:
@@ -223,7 +223,7 @@ class ExecutionContext:
             back = back._back
         return res
 
-    def squash(self) -> ExecutionContext:
+    def squash(self) -> 'ExecutionContext':
         """Return an equivalent EC with depth 1"""
         lc = self._lc
         back = self._back

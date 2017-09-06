@@ -12,7 +12,7 @@ VT = TypeVar('VT')  # A value type
 
 # Fake thread state so the code works.
 
-class ThreadState(threading.local):
+class ThreadState(threading.local):  # type: ignore  # See https://github.com/python/typing/issues/1591
     """Dummy corresponding to PyThreadState.
 
     This implementation is actually thread-local!
@@ -58,10 +58,11 @@ class ContextVar(Generic[T, S]):
 
     def get(self) -> Union[T, S]:
         """Return topmost value or default"""
-        ec = get_EC()
+        ec: Optional['ExecutionContext'] = get_EC()
         while ec is not None:
             if self in ec.lc:
-                return ec.lc[self]
+                value: T = ec.lc[self]
+                return value
             ec = ec.back
         return self._default
 
@@ -175,15 +176,21 @@ class LocalContext:
     def __init__(self) -> None:
         self._bare = FrozenDict()
 
-    def run(self, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+    def run_with_EC(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+        """Run fn with this LC pushed on top of ec, then extract values back"""
         old_ec = get_EC()
-        new_ec = ExecutionContext(self._bare, old_ec)
+        new_ec = ExecutionContext(self._bare, ec)
         try:
             set_EC(new_ec)
             return fn(*args, **kwds)
         finally:
             self._bare = old_ec.lc
             set_EC(old_ec)
+
+    def run(self, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+        """Run fn with this LC pushed on top of current EC, then extract values back"""
+        old_ec = get_EC()
+        return self.run_with_EC(old_ec, fn, *args, **kwds)
 
 class ExecutionContext:
     """Execution context -- a linked list of FrozenDicts.
@@ -208,7 +215,7 @@ class ExecutionContext:
         return self._lc
 
     @property
-    def back(self) -> 'ExecutionContext':
+    def back(self) -> Optional['ExecutionContext']:
         return self._back
 
     def vars(self) -> List[ContextVar]:
@@ -232,12 +239,7 @@ class ExecutionContext:
             back = back._back
         return ExecutionContext(FrozenDict(lc), None)
 
-def run_with_EC(ec, fn: Callable[..., T], *args, **kwds) -> T:
+def run_with_EC(ec: ExecutionContext, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
     """Pushes given EC, calls callable, and pops the EC again"""
-    old_ec = get_EC()
-    new_ec = ExecutionContext(FrozenDict(), ec)  # Push an empty EC
-    try:
-        set_EC(new_ec)
-        return fn(*args, **kwds)
-    finally:
-        set_EC(old_ec)
+    new_lc = LocalContext()
+    return new_lc.run_with_EC(ec, fn, *args, **kwds)

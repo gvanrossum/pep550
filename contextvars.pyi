@@ -167,9 +167,9 @@ class ExecutionContext:
     @property
     def depth(self) -> int:
         """Number of links in the chain (>= 1)"""
-        if self.back is None:
+        if self._back is None:
             return 1
-        return self.back.depth + 1
+        return self._back.depth + 1
 
     @property
     def lc(self) -> FrozenDict:
@@ -178,6 +178,18 @@ class ExecutionContext:
     @property
     def back(self) -> ExecutionContext:
         return self._back
+
+    def vars(self) -> List[ContextVar]:
+        res = list(self._lc)
+        seen = set(res)
+        back = self._back
+        while back is not None:
+            for var in back._lc:
+                if var not in seen:
+                    res.append(var)
+                    seen.add(var)
+            back = back._back
+        return res
 
     def squash(self) -> ExecutionContext:
         """Return an equivalent EC with depth 1"""
@@ -209,7 +221,7 @@ def run_with_EC(ec, fn: Callable[..., T], *args, **kwds) -> T:
     """Pushes given EC, calls callable, and pops the EC again"""
     old_ec = get_EC()
     try:
-        set_EC(old_ec)
+        set_EC(ec)
         return fn(*args, **kwds)
     finally:
         set_EC(old_ec)

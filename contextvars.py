@@ -176,7 +176,7 @@ class LocalContext:
     def __init__(self) -> None:
         self._bare = FrozenDict()
 
-    def run_with_EC(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+    def run(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
         """Run fn with this LC pushed on top of ec, then extract values back"""
         old_ec = get_EC()
         new_ec = ExecutionContext(self._bare, ec)
@@ -186,11 +186,6 @@ class LocalContext:
         finally:
             self._bare = get_EC().lc
             set_EC(old_ec)
-
-    def run(self, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
-        """Run fn with this LC pushed on top of current EC, then extract values back"""
-        old_ec = get_EC()
-        return self.run_with_EC(old_ec, fn, *args, **kwds)
 
 class ExecutionContext:
     """Execution context -- a linked list of FrozenDicts.
@@ -239,7 +234,14 @@ class ExecutionContext:
             back = back._back
         return ExecutionContext(FrozenDict(lc), None)
 
+# Show how the original run_with_*_context() can be implemented:
+
 def run_with_EC(ec: ExecutionContext, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
-    """Pushes given EC, calls callable, and pops the EC again"""
+    """Sets given EC with an empty LC, call fn(), and restore previous EC"""
     new_lc = LocalContext()
-    return new_lc.run_with_EC(ec, fn, *args, **kwds)
+    return new_lc.run(ec, fn, *args, **kwds)
+
+def run_with_LC(lc: LocalContext, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+    """Push given LC on top of current EC, call fn(), and restore previous EC"""
+    old_ec = get_EC()
+    return lc.run(old_ec, fn, *args, **kwds)

@@ -31,7 +31,7 @@ def get_EC() -> 'ExecutionContext':
     """Return current thread's EC (creating it if necessary)"""
     ts = get_TS()
     if ts.ec is None:
-        ts.ec = ExecutionContext(FrozenDict(), None)
+        ts.ec = ExecutionContext(FrozenDict(), None, 1)
     return ts.ec
 
 def set_EC(ec: 'ExecutionContext') -> None:
@@ -70,7 +70,7 @@ class ContextVar(Generic[T, S]):
         """Overwrite topmost value"""
         old_ec = get_EC()
         new_lc = old_ec.lc.add(self, value)
-        new_ec = ExecutionContext(new_lc, old_ec.back)
+        new_ec = ExecutionContext(new_lc, old_ec.back, old_ec.depth)
         set_EC(new_ec)
 
     def setx(self, value: T) -> 'CM':
@@ -83,7 +83,7 @@ class ContextVar(Generic[T, S]):
         else:
             old_value = None
         new_lc = lc.add(self, value)
-        new_ec = ExecutionContext(new_lc, ec.back)
+        new_ec = ExecutionContext(new_lc, ec.back, ec.depth)
         set_EC(new_ec)
         return CM(self, old_value, found)
 
@@ -120,7 +120,7 @@ class CM:
             new_lc = lc.add(self._var, self._old_value)
         else:
             new_lc = lc.delete(self._var)
-        new_ec = ExecutionContext(new_lc, ec.back)
+        new_ec = ExecutionContext(new_lc, ec.back, ec.depth)
         set_EC(new_ec)
         self._used = True
 
@@ -179,7 +179,7 @@ class LocalContext:
     def run(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
         """Run fn with this LC pushed on top of ec, then extract values back"""
         old_ec = get_EC()
-        new_ec = ExecutionContext(self._bare, ec)
+        new_ec = ExecutionContext(self._bare, ec, ec.depth + 1)
         try:
             set_EC(new_ec)
             return fn(*args, **kwds)
@@ -194,16 +194,15 @@ class ExecutionContext:
     To pop a local context, use ec.back.
     """
 
-    def __init__(self, lc: FrozenDict, back: Optional['ExecutionContext']) -> None:
+    def __init__(self, lc: FrozenDict, back: Optional['ExecutionContext'], depth: int) -> None:
         self._lc = lc
         self._back = back
+        self._depth = depth
 
     @property
     def depth(self) -> int:
         """Number of links in the chain (>= 1)"""
-        if self._back is None:
-            return 1
-        return self._back.depth + 1
+        return self._depth
 
     @property
     def lc(self) -> FrozenDict:
@@ -232,7 +231,7 @@ class ExecutionContext:
         while back is not None:
             lc = lc.merge(back.lc)
             back = back._back
-        return ExecutionContext(FrozenDict(lc), None)
+        return ExecutionContext(FrozenDict(lc), None, 1)
 
 # Show how the original run_with_*_context() can be implemented:
 

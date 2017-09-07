@@ -184,7 +184,7 @@ class LocalContext:
             set_EC(new_ec)
             return fn(*args, **kwds)
         finally:
-            self._bare = old_ec.lc
+            self._bare = get_EC().lc
             set_EC(old_ec)
 
     def run(self, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:

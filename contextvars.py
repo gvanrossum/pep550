@@ -197,13 +197,12 @@ class ExecutionContext:
     def __init__(self, lc: FrozenDict, back: Optional['ExecutionContext']) -> None:
         self._lc = lc
         self._back = back
+        self._depth = 1 if back is None else 1 + back.depth
 
     @property
     def depth(self) -> int:
         """Number of links in the chain (>= 1)"""
-        if self._back is None:
-            return 1
-        return self._back.depth + 1
+        return self._depth
 
     @property
     def lc(self) -> FrozenDict:

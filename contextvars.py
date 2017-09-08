@@ -76,13 +76,13 @@ class ContextVar(Generic[T]):
         new_ec = ExecutionContext(new_lc, old_ec.back)
         set_EC(new_ec)
 
-    def setx(self, value: T) -> 'CM':
+    def setx(self, value: T) -> 'CM[T]':
         """Overwrite topmost value, allows restore()"""
         ec = get_EC()
         lc = ec.lc
         found = self in lc
         if found:
-            old_value = lc[self]
+            old_value = lc[self]  # type: Optional[T]
         else:
             old_value = None
         new_lc = lc.add(self, value)
@@ -90,7 +90,7 @@ class ContextVar(Generic[T]):
         set_EC(new_ec)
         return CM(self, old_value, found)
 
-class CM:
+class CM(Generic[T]):
     """Context manager for restoring a ContextVar's previous state.
 
     var = ContextVar('var')
@@ -108,7 +108,7 @@ class CM:
     happens.  Calling restore() a second time is a no-op.
     """
 
-    def __init__(self, var: ContextVar, old_value: object, found: bool) -> None:
+    def __init__(self, var: ContextVar[T], old_value: Optional[T], found: bool) -> None:
         self._var = var
         self._old_value = old_value
         self._found = found
@@ -127,10 +127,10 @@ class CM:
         set_EC(new_ec)
         self._used = True
 
-    def __enter__(self) -> 'CM':
+    def __enter__(self) -> 'CM[T]':
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         self.restore()
 
 class LocalContext(Mapping[KT, VT]):
@@ -174,12 +174,12 @@ class ContextHolder:
     This wraps a LocalContext.
     """
 
-    _bare: LocalContext[ContextVar, object]
+    _bare: LocalContext[ContextVar[object], object]
 
     def __init__(self) -> None:
         self._bare = LocalContext()
 
-    def run(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+    def run(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: object, **kwds: object) -> T:
         """Run fn with this LC pushed on top of ec, then extract values back"""
         old_ec = get_EC()
         new_ec = ExecutionContext(self._bare, ec)
@@ -197,7 +197,7 @@ class ExecutionContext:
     To pop a local context, use ec.back.
     """
 
-    def __init__(self, lc: LocalContext, back: Optional['ExecutionContext']) -> None:
+    def __init__(self, lc: LocalContext[Any, Any], back: Optional['ExecutionContext']) -> None:
         self._lc = lc
         self._back = back
         self._depth = 1 if back is None else 1 + back.depth
@@ -208,14 +208,14 @@ class ExecutionContext:
         return self._depth
 
     @property
-    def lc(self) -> LocalContext:
+    def lc(self) -> LocalContext[Any, Any]:
         return self._lc
 
     @property
     def back(self) -> Optional['ExecutionContext']:
         return self._back
 
-    def vars(self) -> List[ContextVar]:
+    def vars(self) -> List[ContextVar[object]]:
         res = list(self._lc)
         seen = set(res)
         back = self._back
@@ -238,12 +238,12 @@ class ExecutionContext:
 
 # Show how the original run_with_*_context() can be implemented:
 
-def run_with_EC(ec: ExecutionContext, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+def run_with_EC(ec: ExecutionContext, fn: Callable[..., T], *args: object, **kwds: object) -> T:
     """Sets given EC with an empty LC, call fn(), and restore previous EC"""
     new_lc = ContextHolder()
     return new_lc.run(ec, fn, *args, **kwds)
 
-def run_with_LC(lc: ContextHolder, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+def run_with_LC(lc: ContextHolder, fn: Callable[..., T], *args: object, **kwds: object) -> T:
     """Push given LC on top of current EC, call fn(), and restore previous EC"""
     old_ec = get_EC()
     return lc.run(old_ec, fn, *args, **kwds)

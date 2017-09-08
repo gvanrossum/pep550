@@ -6,7 +6,6 @@ from typing import *
 # Type variables.
 
 T = TypeVar('T')  # A type
-S = TypeVar('S')  # Another type
 KT = TypeVar('KT')  # A key type
 VT = TypeVar('VT')  # A value type
 
@@ -41,10 +40,10 @@ def set_EC(ec: 'ExecutionContext') -> None:
 
 _no_default: Any = object()
 
-class ContextVar(Generic[T, S]):
+class ContextVar(Generic[T]):
     """Context variable."""
 
-    def __init__(self, name: str, *, default: S = _no_default) -> None:
+    def __init__(self, name: str, *, default: T = _no_default) -> None:
         self._name = name
         self._default = default
 
@@ -53,12 +52,12 @@ class ContextVar(Generic[T, S]):
         return self._name
 
     @property
-    def default(self) -> S:
+    def default(self) -> T:
         return self._default
 
     # Methods that take the current context into account
 
-    def get(self) -> Union[T, S]:
+    def get(self) -> T:
         """Return topmost value or default"""
         ec: Optional['ExecutionContext'] = get_EC()
         while ec is not None:

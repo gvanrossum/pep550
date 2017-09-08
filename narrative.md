@@ -45,7 +45,8 @@ thread-local storage.
 
 An ``ExecutionContext`` is similar to a ``ChainMap`` but the
 underlying mappings are immutable.  The ``ContextVar.get()`` method
-does a lookup with ``self`` as a key, returning ``None`` if the search
+does a lookup with ``self`` as a key, raising ``LookupError`` or
+returning a default value specified in the constructor if the search
 falls through.  The ``ExecutionContext`` itself is implemented as an
 immutable linked list, where each node has a pointer to the underlying
 immutable mapping and a back pointer (to the following link in the

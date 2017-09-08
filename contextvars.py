@@ -31,7 +31,7 @@ def get_EC() -> 'ExecutionContext':
     """Return current thread's EC (creating it if necessary)"""
     ts = get_TS()
     if ts.ec is None:
-        ts.ec = ExecutionContext(FrozenDict(), None)
+        ts.ec = ExecutionContext(LocalContext(), None)
     return ts.ec
 
 def set_EC(ec: 'ExecutionContext') -> None:
@@ -130,7 +130,7 @@ class CM:
     def __exit__(self, *args: Any) -> None:
         self.restore()
 
-class FrozenDict(Mapping[KT, VT]):
+class LocalContext(Mapping[KT, VT]):
 
     def __init__(self, d: Mapping[KT, VT] = {}) -> None:
         self.__d = dict(d)
@@ -147,34 +147,34 @@ class FrozenDict(Mapping[KT, VT]):
     def __contains__(self, key: object) -> bool:
         return key in self.__d
 
-    # API to create new FrozenDict instances.
+    # API to create new LocalContext instances.
 
-    def add(self, key: KT, value: VT) -> 'FrozenDict[KT, VT]':
+    def add(self, key: KT, value: VT) -> 'LocalContext[KT, VT]':
         d = dict(self.__d)
         d[key] = value
-        return FrozenDict(d)
+        return LocalContext(d)
 
-    def delete(self, key: KT) -> 'FrozenDict[KT, VT]':
+    def delete(self, key: KT) -> 'LocalContext[KT, VT]':
         d = dict(self.__d)
         del d[key]
-        return FrozenDict(d)
+        return LocalContext(d)
 
-    def merge(self, other: 'FrozenDict[KT, VT]') -> 'FrozenDict[KT, VT]':
+    def merge(self, other: 'LocalContext[KT, VT]') -> 'LocalContext[KT, VT]':
         # Note that for keys in both, self[key] prevails.
         d = dict(other.__d)
         d.update(self)
-        return FrozenDict(d)
+        return LocalContext(d)
 
-class LocalContext:
+class ContextHolder:
     """Mutable local context object.
 
-    This wraps a FrozenDict.
+    This wraps a LocalContext.
     """
 
-    _bare: FrozenDict[ContextVar, object]
+    _bare: LocalContext[ContextVar, object]
 
     def __init__(self) -> None:
-        self._bare = FrozenDict()
+        self._bare = LocalContext()
 
     def run(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
         """Run fn with this LC pushed on top of ec, then extract values back"""
@@ -188,13 +188,13 @@ class LocalContext:
             set_EC(old_ec)
 
 class ExecutionContext:
-    """Execution context -- a linked list of FrozenDicts.
+    """Execution context -- a linked list of LocalContexts.
 
     To push a local context, use ExecutionContext(lc, ec).
     To pop a local context, use ec.back.
     """
 
-    def __init__(self, lc: FrozenDict, back: Optional['ExecutionContext']) -> None:
+    def __init__(self, lc: LocalContext, back: Optional['ExecutionContext']) -> None:
         self._lc = lc
         self._back = back
         self._depth = 1 if back is None else 1 + back.depth
@@ -205,7 +205,7 @@ class ExecutionContext:
         return self._depth
 
     @property
-    def lc(self) -> FrozenDict:
+    def lc(self) -> LocalContext:
         return self._lc
 
     @property
@@ -231,16 +231,16 @@ class ExecutionContext:
         while back is not None:
             lc = lc.merge(back.lc)
             back = back._back
-        return ExecutionContext(FrozenDict(lc), None)
+        return ExecutionContext(LocalContext(lc), None)
 
 # Show how the original run_with_*_context() can be implemented:
 
 def run_with_EC(ec: ExecutionContext, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
     """Sets given EC with an empty LC, call fn(), and restore previous EC"""
-    new_lc = LocalContext()
+    new_lc = ContextHolder()
     return new_lc.run(ec, fn, *args, **kwds)
 
-def run_with_LC(lc: LocalContext, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
+def run_with_LC(lc: ContextHolder, fn: Callable[..., T], *args: Any, **kwds: Any) -> T:
     """Push given LC on top of current EC, call fn(), and restore previous EC"""
     old_ec = get_EC()
     return lc.run(old_ec, fn, *args, **kwds)

@@ -179,17 +179,6 @@ class ContextHolder:
     def __init__(self) -> None:
         self._bare = LocalContext()
 
-    def run(self, ec: 'ExecutionContext', fn: Callable[..., T], *args: object, **kwds: object) -> T:
-        """Run fn with this LC pushed on top of ec, then extract values back"""
-        old_ec = get_EC()
-        new_ec = ExecutionContext(self._bare, ec)
-        try:
-            set_EC(new_ec)
-            return fn(*args, **kwds)
-        finally:
-            self._bare = get_EC().lc
-            set_EC(old_ec)
-
 class ExecutionContext:
     """Execution context -- a linked list of LocalContexts.
 
@@ -238,12 +227,24 @@ class ExecutionContext:
 
 # Show how the original run_with_*_context() can be implemented:
 
+def run_with_context(ec: ExecutionContext, ch: Optional[ContextHolder], fn: Callable[..., T], *args: object, **kwds: object) -> T:
+    """Run fn with this LC pushed on top of ec, then extract values back"""
+    if ch is None:
+        ch = ContextHolder()
+    old_ec = get_EC()
+    new_ec = ExecutionContext(ch._bare, ec)
+    try:
+        set_EC(new_ec)
+        return fn(*args, **kwds)
+    finally:
+        ch._bare = get_EC().lc
+        set_EC(old_ec)
+
 def run_with_EC(ec: ExecutionContext, fn: Callable[..., T], *args: object, **kwds: object) -> T:
     """Sets given EC with an empty LC, call fn(), and restore previous EC"""
-    new_lc = ContextHolder()
-    return new_lc.run(ec, fn, *args, **kwds)
+    return run_with_context(ec, None, fn, *args, **kwds)
 
 def run_with_LC(lc: ContextHolder, fn: Callable[..., T], *args: object, **kwds: object) -> T:
     """Push given LC on top of current EC, call fn(), and restore previous EC"""
     old_ec = get_EC()
-    return lc.run(old_ec, fn, *args, **kwds)
+    return run_with_context(old_ec, lc, fn, *args, **kwds)

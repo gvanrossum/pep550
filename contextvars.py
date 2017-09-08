@@ -39,10 +39,12 @@ def set_EC(ec: 'ExecutionContext') -> None:
     ts = get_TS()
     ts.ec = ec
 
+_no_default: Any = object()
+
 class ContextVar(Generic[T, S]):
     """Context variable."""
 
-    def __init__(self, name: str, *, default: S) -> None:
+    def __init__(self, name: str, *, default: S = _no_default) -> None:
         self._name = name
         self._default = default
 
@@ -64,7 +66,9 @@ class ContextVar(Generic[T, S]):
                 value: T = ec.lc[self]
                 return value
             ec = ec.back
-        return self._default
+        if self._default is not _no_default:
+            return self._default
+        raise LookupError
 
     def set(self, value: T) -> None:
         """Overwrite topmost value"""

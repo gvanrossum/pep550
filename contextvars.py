@@ -69,14 +69,7 @@ class ContextVar(Generic[T]):
             return self._default
         raise LookupError
 
-    def set(self, value: T) -> None:
-        """Overwrite topmost value"""
-        old_ec = get_EC()
-        new_lc = old_ec.lc.add(self, value)
-        new_ec = ExecutionContext(new_lc, old_ec.back)
-        set_EC(new_ec)
-
-    def setx(self, value: T) -> 'CM[T]':
+    def set(self, value: T) -> 'CM[T]':
         """Overwrite topmost value, allows restore()"""
         ec = get_EC()
         lc = ec.lc
@@ -97,12 +90,12 @@ class CM(Generic[T]):
 
     def fun():
         old_value = var.get()
-        with var.setx(<value>):
+        with var.set(<value>):
             # Here var.get() is <value>
             <stuff>
         # Here var.get() is old_value
 
-    Note that the side effect of setx() happens immediately;
+    Note that the side effect of set() happens immediately;
     __enter__() is a dummy returning self, __exit__() calls restore(),
     and if the object is GC'ed before restore() is called nothing
     happens.  Calling restore() a second time is a no-op.

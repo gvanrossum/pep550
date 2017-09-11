@@ -57,6 +57,18 @@ class ContextVar(Generic[T]):
 
     # Methods that take the current context into account
 
+    def get_stack(self) -> List[Optional[T]]:
+        ec: Optional['ExecutionContext'] = get_EC()
+        values: List[Optional[T]] = []
+        while ec is not None:
+            if self in ec.lc:
+                value: T = ec.lc[self]
+                values.append(value)
+            else:
+                values.append(None)
+            ec = ec.back
+        return values
+
     def get(self) -> T:
         """Return topmost value or default"""
         ec: Optional['ExecutionContext'] = get_EC()

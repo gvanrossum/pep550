@@ -57,11 +57,13 @@ class ContextVar(Generic[T]):
 
     # Methods that take the current context into account.
 
-    def get(self) -> T:
+    def get(self, default: T = _no_default) -> T:
         """Return current value."""
         ctx: 'Context' = get_ctx()
         if self in ctx:
             return ctx[self]
+        if default is not _no_default:
+            return default
         if self._default is not _no_default:
             return self._default
         raise LookupError

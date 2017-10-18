@@ -108,4 +108,12 @@ class AbstractContext(MutableMapping[KT, VT]):
 
     # For other methods, the defaults in MutableMapping suffice.
 
-Context = AbstractContext[ContextVar, Any]
+class Context(AbstractContext[ContextVar, Any]):
+
+    def run(self, func: Callable[..., T], *args, **kwds) -> T:
+        saved = get_ctx()
+        try:
+            set_ctx(self)
+            return func(*args, **kwds)
+        finally:
+            set_ctx(saved)

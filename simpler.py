@@ -33,7 +33,7 @@ def get_ctx() -> 'Context':
         ts.ctx = Context()
     return ts.ctx
 
-def set_ctx(ctx: 'Context') -> None:
+def _set_ctx(ctx: 'Context') -> None:
     """Set current thread's context."""
     ts = get_TS()
     ts.ctx = ctx
@@ -86,7 +86,7 @@ class ContextVar(Generic[T]):
 class AbstractContext(MutableMapping[KT, VT]):
 
     def __init__(self, d: Mapping[KT, VT] = {}) -> None:
-        self.__d = dict(d)
+        self.__d = dict(d)  # Maybe a weakkeydict?
 
     def __getitem__(self, key: KT) -> VT:
         return self.__d[key]
@@ -113,7 +113,7 @@ class Context(AbstractContext[ContextVar, Any]):
     def run(self, func: Callable[..., T], *args, **kwds) -> T:
         saved = get_ctx()
         try:
-            set_ctx(self)
+            _set_ctx(self)
             return func(*args, **kwds)
         finally:
-            set_ctx(saved)
+            _set_ctx(saved)

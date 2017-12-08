@@ -95,16 +95,6 @@ class ContextVar(Generic[T]):
         else:
             ctx[self] = t._orig
 
-    def delete(self) -> None:
-        """Delete current value."""
-        ctx: 'Context' = get_ctx()
-        if self in ctx:
-            del ctx[self]
-        elif self._default is not _no_default:
-            pass
-        else:
-            raise LookupError
-
 class AbstractContext(MutableMapping[KT, VT]):
 
     def __init__(self, d: Mapping[KT, VT] = {}) -> None:

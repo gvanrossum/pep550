@@ -84,18 +84,20 @@ class ContextVar(Generic[T]):
             orig = _no_default
         else:
             orig = ctx[self]
-        ctx[self] = value
+        ctx._setitem(self, value)
         return Token(orig)
 
     def reset(self, t: Token[T]) -> None:
         """Restore state as it was when set() returned t."""
         ctx = get_ctx()
         if t._orig is _no_default:
-            del ctx[self]
+            ctx._delitem(self)
         else:
-            ctx[self] = t._orig
+            ctx._setitem(self, t._orig)
 
-class AbstractContext(MutableMapping[KT, VT]):
+class AbstractContext(Mapping[KT, VT]):
+
+    # The mapping is mutable through private methods.
 
     def __init__(self, d: Mapping[KT, VT] = {}) -> None:
         self.__d = dict(d)  # Maybe a weakkeydict?
@@ -103,10 +105,10 @@ class AbstractContext(MutableMapping[KT, VT]):
     def __getitem__(self, key: KT) -> VT:
         return self.__d[key]
 
-    def __setitem__(self, key: KT, value: VT) -> None:
+    def _setitem(self, key: KT, value: VT) -> None:
         self.__d[key] = value
 
-    def __delitem__(self, key: KT) -> None:
+    def _delitem(self, key: KT) -> None:
         del self.__d[key]
 
     def __len__(self) -> int:

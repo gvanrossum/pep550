@@ -40,6 +40,14 @@ def _set_ctx(ctx: 'Context') -> None:
 
 _no_default: Any = object()
 
+class Token(Generic[T]):
+
+    _cv: ContextVar[T]
+    _orig: T
+
+    def __init__(self, orig: T = _no_default) -> None:
+        self._orig = orig
+
 class ContextVar(Generic[T]):
     """Context variable."""
 
@@ -61,17 +69,31 @@ class ContextVar(Generic[T]):
         """Return current value."""
         ctx: 'Context' = get_ctx()
         if self in ctx:
-            return ctx[self]
+            value: T = ctx[self]
+            return value
         if default is not _no_default:
             return default
         if self._default is not _no_default:
             return self._default
         raise LookupError
 
-    def set(self, value: T) -> None:
+    def set(self, value: T) -> Token[T]:
         """Overwrite current value."""
         ctx: 'Context' = get_ctx()
+        if self in ctx:
+            orig = _no_default
+        else:
+            orig = ctx[self]
         ctx[self] = value
+        return Token(orig)
+
+    def reset(self, t: Token[T]) -> None:
+        """Restore state as it was when set() returned t."""
+        ctx = get_ctx()
+        if t._orig is _no_default:
+            del ctx[self]
+        else:
+            ctx[self] = t._orig
 
     def delete(self) -> None:
         """Delete current value."""
@@ -110,7 +132,9 @@ class AbstractContext(MutableMapping[KT, VT]):
 
 class Context(AbstractContext[ContextVar, Any]):
 
-    def run(self, func: Callable[..., T], *args, **kwds) -> T:
+    # Externally this is only supposed to subclass (immutable) Mapping.
+
+    def run(self, func: Callable[..., T], *args: Any, **kwds: Any) -> T:
         saved = get_ctx()
         try:
             _set_ctx(self)
